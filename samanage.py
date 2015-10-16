@@ -107,22 +107,17 @@ class Samanage(object):
     def _uri(self, record_type, record_id=None):
         if record_type not in self.supported_types:
             raise ValueError('{} not supported'.format(record_type))
-
         if record_id:
-            uri = '{}/{}/{}.json'.format(self.uri, record_type, record_id) 
-        else:
-            uri = '{}/{}.json'.format(self.uri, record_type) 
-        return uri
+            return '{}/{}/{}.json'.format(self.uri, record_type, record_id) 
+        return '{}/{}.json'.format(self.uri, record_type) 
 
     def _get_uri(self, record_type, count=25, record_id=None, search={}):
         '''build the uri with correct parameters'''
         uri = self._uri(record_type, record_id)
         search['per_page'] = count
         if search:
-            self.logger.debug('add search paramter: {}'.format(search))
             uri += '?{}'.format(urllib.urlencode(search))
-
-        self.logger.debug('fetching uri:{}'.format(uri))    
+            self.logger.debug('add search paramter: {}'.format(uri))
         return uri
 
 
@@ -149,7 +144,7 @@ class Samanage(object):
                 return True
 
     def _get_raw(self, uri, record_type, record_id=None):
-        uri = self._uri(record_type, record_id=record_id)
+        self.logger.debug('fetching uri:{}'.format(uri))    
         response = self.session.get(uri)
         return self._check_response(response, record_type)
 
