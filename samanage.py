@@ -25,15 +25,32 @@ class Record(object):
 class CatalogItems(Record):
     pass
 
-class User(Record):
-    def __init__(self, json_payload):
-        super(Hardware, self).__init__(json_payload)
-        self.title           = json_payload.get('title', '')
-        self.department      = json_payload.get('department', '')
-        self.email           = json_payload.get('email', '')
-
 class Department(Record):
     pass
+
+class Incident(Record):
+    def __init__(self, json_payload):
+        super(Incident, self).__init__(json_payload)
+        self.subcategory         = json_payload.get('subcategory', '')
+        self.updated_at          = json_payload.get('updated_at', '')
+        #This is a massive object, shuld parse it a bit better
+        #self.assignee           = json_payload.get('assignee', '')
+        self.href                = json_payload.get('href', '')
+        self.created_by          = json_payload.get('created_by', '')
+        self.created_at          = json_payload.get('created_at', '')
+        self.priority            = json_payload.get('priority', '')
+        self.state               = json_payload.get('state', '')
+        self.description         = json_payload.get('description', '')
+        self.description_no_html = json_payload.get('description_no_html', '')
+        self.requester           = json_payload.get('requester', '')
+
+
+class User(Record):
+    def __init__(self, json_payload):
+        super(User, self).__init__(json_payload)
+        self.title      = json_payload.get('title', '')
+        self.department = json_payload.get('department', '')
+        self.email      = json_payload.get('email', '')
 
 class Hardware(Record):
     def __init__(self, json_payload):
@@ -55,8 +72,12 @@ class Hardware(Record):
         self.technical_contact = json_payload.get('technical_contact', '')
         self.username          = json_payload.get('username', '')
 
-    def __repr__(self):
-        return 'Hardware()'
+    def get_incidents(self, client):
+        '''get a list of incidents using the client passed'''
+        uri = '{}/hardwares/{}-{}/incidents.json'.format(
+                client.uri, self.id, self.name.replace('.','-'))
+        return client._get_raw(uri, 'incidents')
+
 
 class Samanage(object):
 
@@ -65,9 +86,10 @@ class Samanage(object):
             'users': User,
             'departments': Department,
             'catalog_items': CatalogItems,
+            'incidents': Incident,
             }
 
-    def __init__(self, username, password, uri):
+    def __init__(self, username, password, uri='https://api.samanage.com'):
         self.username     = username
         self.password     = password
         self.uri          = uri
@@ -99,44 +121,62 @@ class Samanage(object):
         self.logger.debug('fetching uri:{}'.format(uri))    
         return uri
 
-    def get(self, record_type, count=25, record_id=None, search={}):
+
+    def _check_response(self, response, record_type):
         results = []
-        headers = {'Accept' : 'application/vnd.samanage.v1.2+json'}
-        uri = self._get_uri(record_type, count, record_id, search)
-        request = self.session.get(uri, headers=headers)
-        if request.status_code != requests.codes.ok:
+        if response.status_code != requests.codes.ok:
             self.logger.error('HTTP {}:{}'.format(
-                request.status_code, request.text))
+                response.status_code, response.text))
             return
         else:
-            json_out = request.json()
+            json_out = response.json()
             self.logger.debug(json.dumps(json_out, indent=4))
-            self.logger.debug('Response Headers: {}'.format(request.headers))
+            self.logger.debug('Response Headers: {}'.format(response.headers))
             if type(json_out) is list:
                 for record in json_out:
                     results.append(
                             self.supported_types.get(record_type, Record)(record))
             else:
                 results.append(
-                        self.supported_types.get(record_type, Record)(json))
+                        self.supported_types.get(record_type, Record)(json_out))
             return results
 
+    def _get_raw(self, uri, record_type):
+        headers = {'Accept' : 'application/vnd.samanage.v1.2+json'}
+        response = self.session.get(uri, headers=headers)
+        return self._check_response(response, record_type)
+
+    def _payload(self, payload, record_type):
+        if isinstance(payload, Record):
+            return { record_type[:-1] : payload.dump() }
+        return { record_type[:-1] : payload }
+
+    def get(self, record_type, count=25, record_id=None, search={}):
+        uri = self._get_uri(record_type, count, record_id, search)
+        return self._get_raw(uri, record_type)
+
     def put(self, record_type, payload, record_id):
+        if type(record_id) is not int:
+            raise ValueError('record_id must by type int() not {}'.format(
+                type(record_id)))
         headers = { 
                 'Accept'       : 'application/vnd.samanage.v1.2+json',
-                'Content-Type' : 'text/json',
+                'Content-Type' : 'application/json',
                 }
-        uri = self._uri(record_type, record_id)
-        request = self.session.put(uri, json=payload, headers=headers)
+        uri = self._uri(record_type, record_id=record_id)
+        response = self.session.put(uri, json=self._payload(payload, record_type), 
+                headers=headers)
+        return self._check_response(response, record_type)
 
     def post(self, record_type, payload):
         headers = { 
-                'Accept'       : 'application/json',
-                'Content-Type' : 'text/json',
+                'Accept'       : 'application/vnd.samanage.v1.2+json',
+                'Content-Type' : 'application/json',
                 }
         uri = self._uri(record_type)
-        request = self.session.post(uri, json=payload, headers=headers)
-        
+        response = self.session.post(uri, json=self._payload(payload, record_type), 
+                headers=headers)
+        return self._check_response(response, record_type)
 
 def main():
     parser = argparse.ArgumentParser(description='dns spoof monitoring script')
