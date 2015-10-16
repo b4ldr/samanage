@@ -15,7 +15,10 @@ class Record(object):
         return u'{}\n\t'.format(self.name) + '\n\t'.join([u'{}: {}'.format(k,v) 
             for k,v in self.__dict__.items() if v])
 
-    def json(self):
+    def dump(self):
+        return {k: v for k,v in self.__dict__.items() if v}
+
+    def dumps(self):
         return json.dumps(self, 
                 default=lambda o: {k: v for k,v in o.__dict__.items() if v})
 
@@ -23,7 +26,11 @@ class CatalogItems(Record):
     pass
 
 class User(Record):
-    pass
+    def __init__(self, json_payload):
+        super(Hardware, self).__init__(json_payload)
+        self.title           = json_payload.get('title', '')
+        self.department      = json_payload.get('department', '')
+        self.email           = json_payload.get('email', '')
 
 class Department(Record):
     pass
@@ -97,7 +104,7 @@ class Samanage(object):
         headers = {'Accept' : 'application/vnd.samanage.v1.2+json'}
         uri = self._get_uri(record_type, count, record_id, search)
         request = self.session.get(uri, headers=headers)
-        if request.status_code >  201:
+        if request.status_code != requests.codes.ok:
             self.logger.error('HTTP {}:{}'.format(
                 request.status_code, request.text))
             return
@@ -114,13 +121,21 @@ class Samanage(object):
                         self.supported_types.get(record_type, Record)(json))
             return results
 
-    def post(self, record_type, payload, record_id=None):
+    def put(self, record_type, payload, record_id):
         headers = { 
                 'Accept'       : 'application/vnd.samanage.v1.2+json',
                 'Content-Type' : 'text/json',
                 }
         uri = self._uri(record_type, record_id)
-        request = self.session.post(uri, payload, headers=headers)
+        request = self.session.put(uri, json=payload, headers=headers)
+
+    def post(self, record_type, payload):
+        headers = { 
+                'Accept'       : 'application/json',
+                'Content-Type' : 'text/json',
+                }
+        uri = self._uri(record_type)
+        request = self.session.post(uri, json=payload, headers=headers)
         
 
 def main():
