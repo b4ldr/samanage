@@ -97,6 +97,10 @@ class Samanage(object):
         self.session      = requests.Session()
         self.session.auth = requests.auth.HTTPDigestAuth(
                 self.username, self.password)
+        self.session.headers = { 
+                'Accept'       : 'application/vnd.samanage.v1.2+json',
+                'Content-Type' : 'application/json',
+                }
         self.logger.debug('using credentials: {}/{}'.format(
             self.username, self.password))
 
@@ -127,23 +131,26 @@ class Samanage(object):
         if response.status_code != requests.codes.ok:
             self.logger.error('HTTP {}:{}'.format(
                 response.status_code, response.text))
-            return
+            return False
         else:
-            json_out = response.json()
-            self.logger.debug(json.dumps(json_out, indent=4))
-            self.logger.debug('Response Headers: {}'.format(response.headers))
-            if type(json_out) is list:
-                for record in json_out:
+            if response.text.strip():
+                json_out = response.json()
+                self.logger.debug(json.dumps(json_out, indent=4))
+                self.logger.debug('Response Headers: {}'.format(response.headers))
+                if type(json_out) is list:
+                    for record in json_out:
+                        results.append(
+                                self.supported_types.get(record_type, Record)(record))
+                else:
                     results.append(
-                            self.supported_types.get(record_type, Record)(record))
+                            self.supported_types.get(record_type, Record)(json_out))
+                return results
             else:
-                results.append(
-                        self.supported_types.get(record_type, Record)(json_out))
-            return results
+                return True
 
-    def _get_raw(self, uri, record_type):
-        headers = {'Accept' : 'application/vnd.samanage.v1.2+json'}
-        response = self.session.get(uri, headers=headers)
+    def _get_raw(self, uri, record_type, record_id=None):
+        uri = self._uri(record_type, record_id=record_id)
+        response = self.session.get(uri)
         return self._check_response(response, record_type)
 
     def _payload(self, payload, record_type):
@@ -159,23 +166,21 @@ class Samanage(object):
         if type(record_id) is not int:
             raise ValueError('record_id must by type int() not {}'.format(
                 type(record_id)))
-        headers = { 
-                'Accept'       : 'application/vnd.samanage.v1.2+json',
-                'Content-Type' : 'application/json',
-                }
         uri = self._uri(record_type, record_id=record_id)
-        response = self.session.put(uri, json=self._payload(payload, record_type), 
-                headers=headers)
+        response = self.session.put(uri, json=self._payload(payload, record_type))
+        return self._check_response(response, record_type)
+
+    def delete(self, record_type, record_id):
+        if type(record_id) is not int:
+            raise ValueError('record_id must by type int() not {}'.format(
+                type(record_id)))
+        uri = self._uri(record_type, record_id=record_id)
+        response = self.session.delete(uri)
         return self._check_response(response, record_type)
 
     def post(self, record_type, payload):
-        headers = { 
-                'Accept'       : 'application/vnd.samanage.v1.2+json',
-                'Content-Type' : 'application/json',
-                }
         uri = self._uri(record_type)
-        response = self.session.post(uri, json=self._payload(payload, record_type), 
-                headers=headers)
+        response = self.session.post(uri, json=self._payload(payload, record_type))
         return self._check_response(response, record_type)
 
 def main():
